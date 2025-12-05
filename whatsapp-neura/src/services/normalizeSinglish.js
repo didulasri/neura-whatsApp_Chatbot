@@ -1,14 +1,11 @@
 const Groq = require("groq-sdk");
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-module.exports.languageService = async (text) => {
+module.exports.singlishToEnglish = async (text) => {
   const prompt = `
-Detect the language of this text. 
-Respond with ONLY one code:
-en = English
-si = Sinhala
-sl = Singlish
-ta = Tamil
+Convert Sri Lankan Singlish into correct English.
+Do NOT translate Sinhala. Only rewrite Singlish to clean English.
+Output only the corrected English sentence.
 `;
 
   try {
@@ -18,12 +15,12 @@ ta = Tamil
         { role: "system", content: prompt },
         { role: "user", content: text },
       ],
-      temperature: 0.0,
+      temperature: 0.1,
     });
 
     return res.choices[0].message.content.trim();
   } catch (e) {
-    console.log("Language detect error:", e.message);
-    return "en";
+    console.log("Singlish normalize error:", e.message);
+    return text;
   }
 };

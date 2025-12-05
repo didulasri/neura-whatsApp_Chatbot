@@ -1,5 +1,8 @@
 const whatsappService = require("../services/whatsappService");
-const languageService = require("../services/languageService");
+const { languageService } = require("../services/languageService");
+const { singlishToEnglish } = require("../services/normalizeSinglish");
+const { sinhalaToEnglish } = require("../services/translateSinhala");
+const { extractOrder } = require("../services/extractOrder");
 
 const processedMessages = new Set();
 
@@ -49,20 +52,42 @@ const receiveMessage = async (req, res) => {
     console.log("📩 From:", from);
     console.log("💬 Text:", text);
 
-    // Detect language via Groq
-    const { language } = await languageService.detectLanguage(text);
+    // Detect language
+    const lang = await languageService(text);
+    console.log("🌍 Detected Language:", lang);
 
-    let reply = "Thank you! I received your message ❤️";
+    // Normalize
+    let englishText = text;
 
-    if (language === "si") {
-      reply = "ස්තූතියි! මම ඔබේ පණිවිඩය ලැබුවා ❤️";
-    } else if (language === "ta") {
-      reply = "நன்றி! உங்கள் செய்தியை பெற்றேன் ❤️";
+    if (lang === "sl") {
+      englishText = await singlishToEnglish(text);
+    } else if (lang === "si") {
+      englishText = await sinhalaToEnglish(text);
+    }
+
+    console.log("📝 Normalized English:", englishText);
+
+    // Extract Order
+    const order = await extractOrder(englishText);
+    console.log("📦 Extracted Order:", order);
+
+    // Reply in English only
+    let reply = "";
+
+    if (order?.intent === "order") {
+      reply = `Here is what I understood from your order:\n${JSON.stringify(
+        order,
+        null,
+        2
+      )}`;
+    } else {
+      reply = `Here is what I understood:\n${JSON.stringify(order, null, 2)}`;
     }
 
     await whatsappService.sendText(from, reply);
+    console.log("Reply sent:", reply);
   } catch (err) {
-    console.error("❌ Webhook Error:", err);
+    console.error("Webhook Error:", err);
   }
 };
 
