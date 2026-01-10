@@ -5,6 +5,8 @@ const { sinhalaToEnglish } = require("../services/translateSinhala");
 const { extractOrder } = require("../services/extractOrder");
 const { checkAvailability } = require("../services/availabilityService");
 const { generateSmartReply } = require("../services/aiReplyService");
+const { getSession, saveSession } = require("../services/sessionService");
+const { detectIntent } = require("../services/aiIntentService"); // AI intent
 
 const processedMessages = new Set();
 
@@ -15,11 +17,11 @@ const verifyWebhook = (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
+    console.log("Webhook verified ✅");
     return res.status(200).send(challenge);
   }
 
-  console.log("Webhook verification failed");
+  console.log("Webhook verification failed ❌");
   res.sendStatus(403);
 };
 
@@ -29,45 +31,50 @@ const receiveMessage = async (req, res) => {
   try {
     const entry = req.body.entry?.[0]?.changes?.[0]?.value;
     const message = entry?.messages?.[0];
-
     if (!message) return;
 
     const messageId = message.id;
     const from = message.from;
     const text = message.text?.body || "";
 
-    // Prevent duplicate replies
+    // Prevent duplicate processing
     if (processedMessages.has(messageId)) return;
     processedMessages.add(messageId);
-
     if (processedMessages.size > 200) processedMessages.clear();
 
     console.log("📩 From:", from);
     console.log("💬 Text:", text);
 
-    // 1️⃣ Detect language
+    // 1️⃣ Load session from Redis
+    const session = await getSession(from);
+
+    // 2️⃣ Detect language
     const lang = await languageService(text);
-    console.log("🌍 Language:", lang);
 
-    // 2️⃣ Normalize to English
+    // 3️⃣ Normalize text to English
     let englishText = text;
+    if (lang === "sl") englishText = await singlishToEnglish(text);
+    if (lang === "si") englishText = await sinhalaToEnglish(text);
 
-    if (lang === "sl") {
-      englishText = await singlishToEnglish(text);
-    } else if (lang === "si") {
-      englishText = await sinhalaToEnglish(text);
-    }
+    console.log("🌍 Normalized text:", englishText);
 
-    console.log("📝 Normalized:", englishText);
+    // 4️⃣ Detect AI intent
+    const aiIntent = await detectIntent(englishText);
+    console.log("🧠 AI Intent:", aiIntent);
 
-    // 3️⃣ AI Order Extraction
-    const order = await extractOrder(englishText);
-    console.log("📦 Order:", order);
+    // 5️⃣ Extract order (partial info allowed)
+    const extractedOrder = await extractOrder(englishText);
 
-    // 4️⃣ Availability check (only if order intent exists)
+    // 6️⃣ Merge session + extracted order + AI intent
+    const order = {
+      ...session,
+      ...extractedOrder,
+      aiIntent, // store intent for smarter replies
+    };
+
+    // 7️⃣ Check product availability only if full info is present
     let availabilityResult = null;
-
-    if (order?.intent === "order" && order.productName) {
+    if (order.productName && order.color && order.size) {
       availabilityResult = await checkAvailability({
         productName: order.productName,
         color: order.color,
@@ -76,15 +83,18 @@ const receiveMessage = async (req, res) => {
       });
     }
 
-    // 5️⃣ AI generates friendly human-like reply
+    // 8️⃣ Generate reply (AI + rules + intent)
     const reply = await generateSmartReply({
+      intent: aiIntent, // ✅ Pass AI intent
       userMessage: text,
-      normalizedText: englishText,
       order,
       availabilityResult,
     });
 
-    // 5️⃣ Send WhatsApp reply
+    // 9️⃣ Save updated session back to Redis
+    await saveSession(from, order);
+
+    // 🔟 Send WhatsApp reply
     await whatsappService.sendText(from, reply);
     console.log("✅ Reply sent:", reply);
   } catch (err) {
