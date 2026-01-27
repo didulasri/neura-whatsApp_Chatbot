@@ -42,6 +42,12 @@ async function generateSmartReply({
   if (!availabilityResult.inStock) {
     return "That item is currently out of stock. Would you like another option?";
   }
+  // Customer details
+  if (!order.name) return "Great! May I have your name?";
+  if (!order.address) return "Please share your delivery address 📦";
+  if (!order.phone) return "Finally, may I have your phone number? 📞";
+
+  return "✅ Everything looks good! Would you like me to place the order now?";
 
   // ✅ AI ONLY CONFIRMS FACTS
   return await generateConfirmedAIReply(order, availabilityResult);

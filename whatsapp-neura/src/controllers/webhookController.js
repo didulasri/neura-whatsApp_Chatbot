@@ -6,7 +6,7 @@ const { extractOrder } = require("../services/extractOrder");
 const { checkAvailability } = require("../services/availabilityService");
 const { generateSmartReply } = require("../services/aiReplyService");
 const { getSession, saveSession } = require("../services/sessionService");
-const { detectIntent } = require("../services/aiIntentService"); // AI intent
+const { detectIntent } = require("../services/aiIntentService");
 
 const processedMessages = new Set();
 
@@ -37,7 +37,7 @@ const receiveMessage = async (req, res) => {
     const from = message.from;
     const text = message.text?.body || "";
 
-    // Prevent duplicate processing
+    // 🛑 Prevent duplicate processing
     if (processedMessages.has(messageId)) return;
     processedMessages.add(messageId);
     if (processedMessages.size > 200) processedMessages.clear();
@@ -45,13 +45,13 @@ const receiveMessage = async (req, res) => {
     console.log("📩 From:", from);
     console.log("💬 Text:", text);
 
-    // 1️⃣ Load session from Redis
+    // 1️⃣ Load session
     const session = await getSession(from);
 
     // 2️⃣ Detect language
     const lang = await languageService(text);
 
-    // 3️⃣ Normalize text to English
+    // 3️⃣ Normalize to English
     let englishText = text;
     if (lang === "sl") englishText = await singlishToEnglish(text);
     if (lang === "si") englishText = await sinhalaToEnglish(text);
@@ -62,17 +62,32 @@ const receiveMessage = async (req, res) => {
     const aiIntent = await detectIntent(englishText);
     console.log("🧠 AI Intent:", aiIntent);
 
-    // 5️⃣ Extract order (partial info allowed)
+    // 5️⃣ Extract order (AI)
     const extractedOrder = await extractOrder(englishText);
 
-    // 6️⃣ Merge session + extracted order + AI intent
+    // 6️⃣ SAFE MERGE (🔥 THIS IS THE FIX)
     const order = {
       ...session,
-      ...extractedOrder,
-      aiIntent, // store intent for smarter replies
+      aiIntent,
     };
 
-    // 7️⃣ Check product availability only if full info is present
+    for (const key of Object.keys(extractedOrder)) {
+      const value = extractedOrder[key];
+
+      if (
+        value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        // 🚫 NEVER overwrite productName with size/color words
+        !(key === "productName" && ["S", "M", "L", "XL"].includes(value))
+      ) {
+        order[key] = value;
+      }
+    }
+
+    console.log("🧾 Session after merge:", order);
+
+    // 7️⃣ Check availability ONLY when enough info exists
     let availabilityResult = null;
     if (order.productName && order.color && order.size) {
       availabilityResult = await checkAvailability({
@@ -83,18 +98,18 @@ const receiveMessage = async (req, res) => {
       });
     }
 
-    // 8️⃣ Generate reply (AI + rules + intent)
+    // 8️⃣ Generate smart reply
     const reply = await generateSmartReply({
-      intent: aiIntent, // ✅ Pass AI intent
+      intent: aiIntent,
       userMessage: text,
       order,
       availabilityResult,
     });
 
-    // 9️⃣ Save updated session back to Redis
+    // 9️⃣ Save session
     await saveSession(from, order);
 
-    // 🔟 Send WhatsApp reply
+    // 🔟 Send reply
     await whatsappService.sendText(from, reply);
     console.log("✅ Reply sent:", reply);
   } catch (err) {
