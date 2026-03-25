@@ -80,5 +80,5 @@ module.exports = {
   productVariants,
   orders,
   orderItems,
-  messages,
+
 };

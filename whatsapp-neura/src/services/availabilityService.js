@@ -1,5 +1,5 @@
 const { db } = require("../db"); // make sure this exports drizzle instance
-const { products, productVariants } = require("../db/schema");
+const { products, productVariants } = require("../db/scema");
 const { eq, and, ilike } = require("drizzle-orm");
 
 /**
