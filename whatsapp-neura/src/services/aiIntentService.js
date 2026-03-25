@@ -9,15 +9,21 @@ async function detectIntent(userMessage) {
         content: `
 You are an intent classifier for a WhatsApp sales chatbot.
 
-Classify the message into ONLY one intent:
+Classify the message into ONLY one of these intents:
 - greeting
 - small_talk
 - product_inquiry
 - order
 - unclear
 
-Return ONLY the intent name.
-`,
+Rules:
+- If the user mentions a product name → product_inquiry or order
+- If the user says a color (black, white, red...) → order
+- If the user says a size (S, M, L, XL) → order
+- If unsure → unclear
+
+Return ONLY the intent name. No explanation. No punctuation.
+        `.trim(),
       },
       {
         role: "user",

@@ -1,12 +1,15 @@
-const { db } = require("../db"); // make sure this exports drizzle instance
+const { db } = require("../db");
 const { products, productVariants } = require("../db/scema");
 const { eq, and, ilike } = require("drizzle-orm");
 
 /**
  * Check product availability by name + color + size
+ * Uses ilike (case-insensitive) for all string comparisons
  */
 async function checkAvailability({ productName, color, size, quantity }) {
   try {
+    console.log("🔍 Checking availability:", { productName, color, size, quantity });
+
     const result = await db
       .select({
         name: products.name,
@@ -19,12 +22,14 @@ async function checkAvailability({ productName, color, size, quantity }) {
       .where(
         and(
           eq(products.isActive, true),
-          ilike(products.name, `%${productName}%`), // fuzzy match
-          eq(productVariants.color, color),
-          eq(productVariants.size, size)
+          ilike(products.name, `%${productName}%`),  // ✅ fuzzy + case-insensitive
+          ilike(productVariants.color, color),        // ✅ case-insensitive color
+          ilike(productVariants.size, size)           // ✅ case-insensitive size
         )
       )
       .limit(1);
+
+    console.log("📊 DB result:", result);
 
     if (!result.length) {
       return {
@@ -51,9 +56,9 @@ async function checkAvailability({ productName, color, size, quantity }) {
       stock: variant.stock,
       product: variant,
     };
-  } catch (err) {
-    console.error("DB Error:", err);
 
+  } catch (err) {
+    console.error("❌ DB Error in checkAvailability:", err);
     return {
       found: false,
       inStock: false,
@@ -62,6 +67,4 @@ async function checkAvailability({ productName, color, size, quantity }) {
   }
 }
 
-module.exports = {
-  checkAvailability,
-};
+module.exports = { checkAvailability };

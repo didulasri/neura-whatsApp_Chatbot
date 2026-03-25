@@ -64,8 +64,9 @@ const receiveMessage = async (req, res) => {
 
     // 5️⃣ Extract order (AI)
     const extractedOrder = await extractOrder(englishText);
+    console.log("📦 Extracted order:", extractedOrder);
 
-    // 6️⃣ SAFE MERGE (🔥 core fix)
+    // 6️⃣ SAFE MERGE
     const order = {
       ...session,
       aiIntent,
@@ -78,7 +79,7 @@ const receiveMessage = async (req, res) => {
         value !== null &&
         value !== undefined &&
         value !== "" &&
-        !(key === "productName" && ["S", "M", "L", "XL"].includes(value))
+        !(key === "productName" && ["S", "M", "L", "XL", "XXL"].includes(value?.toUpperCase?.()))
       ) {
         order[key] = value;
       }
@@ -86,35 +87,65 @@ const receiveMessage = async (req, res) => {
 
     console.log("🧾 Session after merge:", order);
 
-    // 🔒 SAFETY FIX: prevent invalid productName
-    const invalidProductValues = [
-      "black", "white", "red", "blue", "green",
-      "s", "m", "l", "xl", "xxl"
-    ];
+    // ─── SAFETY FIXES ────────────────────────────────────────────────
 
+    const colorValues = ["black", "white", "red", "blue", "green", "yellow",
+      "pink", "purple", "orange", "grey", "gray", "brown", "navy"];
+
+    const sizeValues = ["s", "m", "l", "xl", "xxl"];
+
+    // 🔒 FIX 1: If productName is actually a color, rescue it then restore real productName
     if (
       order.productName &&
-      invalidProductValues.includes(order.productName.toLowerCase())
+      colorValues.includes(order.productName.toLowerCase())
     ) {
-      console.log("⚠️ Fixing invalid productName:", order.productName);
+      console.log("⚠️ Fixing invalid productName (color):", order.productName);
+
+      // Rescue color if not already set
+      if (!order.color) {
+        order.color = order.productName.toLowerCase();
+        console.log("✅ Rescued color from productName:", order.color);
+      }
+
+      // Restore real product from session
       order.productName = session.productName || null;
     }
 
-    // 🔒 EXTRA FIX: extract size from wrong field like "M size"
+    // 🔒 FIX 2: If productName is actually a size, rescue it then restore real productName
+    if (
+      order.productName &&
+      sizeValues.includes(order.productName.toLowerCase())
+    ) {
+      console.log("⚠️ Fixing invalid productName (size):", order.productName);
+
+      // Rescue size if not already set
+      if (!order.size) {
+        order.size = order.productName.toUpperCase();
+        console.log("✅ Rescued size from productName:", order.size);
+      }
+
+      // Restore real product from session
+      order.productName = session.productName || null;
+    }
+
+    // 🔒 FIX 3: Extract size hidden inside productName string like "M size" or "polo M"
     if (order.productName && !order.size && typeof order.productName === "string") {
       const sizeMatch = order.productName.match(/\b(S|M|L|XL|XXL)\b/i);
 
       if (sizeMatch) {
         order.size = sizeMatch[0].toUpperCase();
         order.productName = session.productName || null;
-
         console.log("✅ Extracted size from product field:", order.size);
       }
     }
 
-    // 🔒 Normalize values (important for DB matching)
+    // 🔒 FIX 4: Normalize casing for DB matching
     if (order.color) order.color = order.color.toLowerCase();
     if (order.size) order.size = order.size.toUpperCase();
+
+    console.log("✅ Final order before DB check:", order);
+
+    // ─────────────────────────────────────────────────────────────────
 
     // 7️⃣ Check availability
     let availabilityResult = null;
@@ -126,6 +157,7 @@ const receiveMessage = async (req, res) => {
         size: order.size,
         quantity: order.quantity || 1,
       });
+      console.log("🏪 Availability result:", availabilityResult);
     }
 
     // 8️⃣ Generate reply
