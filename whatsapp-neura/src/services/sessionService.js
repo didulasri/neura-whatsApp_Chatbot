@@ -1,4 +1,4 @@
-import { redis } from "../config/redis.js";
+const { redis } = require("../config/redis");
 
 export async function getSession(userId) {
   const data = await redis.get(userId);
