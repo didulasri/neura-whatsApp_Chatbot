@@ -89,49 +89,35 @@ const receiveMessage = async (req, res) => {
 
     // ─── SAFETY FIXES ────────────────────────────────────────────────
 
-    const colorValues = ["black", "white", "red", "blue", "green", "yellow",
-      "pink", "purple", "orange", "grey", "gray", "brown", "navy"];
-
+    const colorValues = [
+      "black", "white", "red", "blue", "green", "yellow",
+      "pink", "purple", "orange", "grey", "gray", "brown", "navy",
+    ];
     const sizeValues = ["s", "m", "l", "xl", "xxl"];
 
-    // 🔒 FIX 1: If productName is actually a color, rescue it then restore real productName
-    if (
-      order.productName &&
-      colorValues.includes(order.productName.toLowerCase())
-    ) {
+    // 🔒 FIX 1: productName is actually a color
+    if (order.productName && colorValues.includes(order.productName.toLowerCase())) {
       console.log("⚠️ Fixing invalid productName (color):", order.productName);
-
-      // Rescue color if not already set
       if (!order.color) {
         order.color = order.productName.toLowerCase();
         console.log("✅ Rescued color from productName:", order.color);
       }
-
-      // Restore real product from session
       order.productName = session.productName || null;
     }
 
-    // 🔒 FIX 2: If productName is actually a size, rescue it then restore real productName
-    if (
-      order.productName &&
-      sizeValues.includes(order.productName.toLowerCase())
-    ) {
+    // 🔒 FIX 2: productName is actually a size
+    if (order.productName && sizeValues.includes(order.productName.toLowerCase())) {
       console.log("⚠️ Fixing invalid productName (size):", order.productName);
-
-      // Rescue size if not already set
       if (!order.size) {
         order.size = order.productName.toUpperCase();
         console.log("✅ Rescued size from productName:", order.size);
       }
-
-      // Restore real product from session
       order.productName = session.productName || null;
     }
 
-    // 🔒 FIX 3: Extract size hidden inside productName string like "M size" or "polo M"
+    // 🔒 FIX 3: size hidden inside productName string e.g. "polo M"
     if (order.productName && !order.size && typeof order.productName === "string") {
       const sizeMatch = order.productName.match(/\b(S|M|L|XL|XXL)\b/i);
-
       if (sizeMatch) {
         order.size = sizeMatch[0].toUpperCase();
         order.productName = session.productName || null;
@@ -147,7 +133,7 @@ const receiveMessage = async (req, res) => {
 
     // ─────────────────────────────────────────────────────────────────
 
-    // 7️⃣ Check availability
+    // 7️⃣ Check availability when all 3 fields are ready
     let availabilityResult = null;
 
     if (order.productName && order.color && order.size) {
@@ -158,6 +144,12 @@ const receiveMessage = async (req, res) => {
         quantity: order.quantity || 1,
       });
       console.log("🏪 Availability result:", availabilityResult);
+
+      // ✅ Mark availability as confirmed in session so flow advances
+      if (availabilityResult.found && availabilityResult.inStock) {
+        order.confirmedAvailability = true;
+        order.price = availabilityResult.price;
+      }
     }
 
     // 8️⃣ Generate reply
