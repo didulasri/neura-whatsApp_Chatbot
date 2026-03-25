@@ -1,12 +1,14 @@
 const { redis } = require("../config/redis");
 
-export async function getSession(userId) {
+async function getSession(userId) {
   const data = await redis.get(userId);
   return data ? JSON.parse(data) : {};
 }
 
-export async function saveSession(userId, session) {
+async function saveSession(userId, session) {
   await redis.set(userId, JSON.stringify(session), {
     EX: 60 * 30, // 30 minutes
   });
 }
+
+module.exports = { getSession, saveSession };
