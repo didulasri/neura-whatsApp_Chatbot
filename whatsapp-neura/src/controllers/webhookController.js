@@ -65,7 +65,7 @@ const receiveMessage = async (req, res) => {
     // 5️⃣ Extract order (AI)
     const extractedOrder = await extractOrder(englishText);
 
-    // 6️⃣ SAFE MERGE (🔥 THIS IS THE FIX)
+    // 6️⃣ SAFE MERGE (🔥 core fix)
     const order = {
       ...session,
       aiIntent,
@@ -78,7 +78,6 @@ const receiveMessage = async (req, res) => {
         value !== null &&
         value !== undefined &&
         value !== "" &&
-        // 🚫 NEVER overwrite productName with size/color words
         !(key === "productName" && ["S", "M", "L", "XL"].includes(value))
       ) {
         order[key] = value;
@@ -87,8 +86,39 @@ const receiveMessage = async (req, res) => {
 
     console.log("🧾 Session after merge:", order);
 
-    // 7️⃣ Check availability ONLY when enough info exists
+    // 🔒 SAFETY FIX: prevent invalid productName
+    const invalidProductValues = [
+      "black", "white", "red", "blue", "green",
+      "s", "m", "l", "xl", "xxl"
+    ];
+
+    if (
+      order.productName &&
+      invalidProductValues.includes(order.productName.toLowerCase())
+    ) {
+      console.log("⚠️ Fixing invalid productName:", order.productName);
+      order.productName = session.productName || null;
+    }
+
+    // 🔒 EXTRA FIX: extract size from wrong field like "M size"
+    if (order.productName && !order.size && typeof order.productName === "string") {
+      const sizeMatch = order.productName.match(/\b(S|M|L|XL|XXL)\b/i);
+
+      if (sizeMatch) {
+        order.size = sizeMatch[0].toUpperCase();
+        order.productName = session.productName || null;
+
+        console.log("✅ Extracted size from product field:", order.size);
+      }
+    }
+
+    // 🔒 Normalize values (important for DB matching)
+    if (order.color) order.color = order.color.toLowerCase();
+    if (order.size) order.size = order.size.toUpperCase();
+
+    // 7️⃣ Check availability
     let availabilityResult = null;
+
     if (order.productName && order.color && order.size) {
       availabilityResult = await checkAvailability({
         productName: order.productName,
@@ -98,7 +128,7 @@ const receiveMessage = async (req, res) => {
       });
     }
 
-    // 8️⃣ Generate smart reply
+    // 8️⃣ Generate reply
     const reply = await generateSmartReply({
       intent: aiIntent,
       userMessage: text,
@@ -112,6 +142,7 @@ const receiveMessage = async (req, res) => {
     // 🔟 Send reply
     await whatsappService.sendText(from, reply);
     console.log("✅ Reply sent:", reply);
+
   } catch (err) {
     console.error("❌ Webhook Error:", err);
   }
